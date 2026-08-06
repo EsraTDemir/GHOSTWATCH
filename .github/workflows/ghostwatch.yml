@@ -1,5 +1,6 @@
 name: GhostWatch daily
 on:
+  push:
   schedule:
     - cron: "0 13 * * *"
   workflow_dispatch:
@@ -13,11 +14,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python ghostwatch.py
+      - name: Wake the robot inside the notebook
+        run: |
+          python -c "import json; nb=json.load(open('GhostWatch.ipynb')); src=[c['source'] for c in nb['cells'] if c['cell_type']=='code'][0]; open('gw.py','w').write(src if isinstance(src,str) else ''.join(src))"
+          python gw.py
       - name: Save the diary
         run: |
           git config user.name "ghostwatch-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add jobs.db latest_report.txt
+          git add GhostWatch/
           git commit -m "daily watch $(date -u +%F)" || echo "nothing new"
           git push
