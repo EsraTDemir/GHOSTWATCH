@@ -56,12 +56,14 @@ jobs:
       - name: Save the diary
         continue-on-error: true
         run: |
+          set +e
           git config user.name "ghostwatch-bot"
           git config user.email "bot@users.noreply.github.com"
           git pull --rebase origin main || true
           git add GhostWatch/
           git commit -m "daily watch $(date -u +%F)" || echo "nothing new"
           git push || echo "push failed; skipping"
+          exit 0
       - name: Upload gw.log artifact on error
         if: steps.wake.outputs.errors == 'true'
         uses: actions/upload-artifact@v4
