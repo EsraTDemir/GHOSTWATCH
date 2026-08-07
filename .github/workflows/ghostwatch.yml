@@ -23,8 +23,8 @@ jobs:
       - name: Set the company watchlist
         run: |
           cat > watchlist.json <<'EOF'
-          {"greenhouse": ["cloudflare", "datadog", "elastic", "gitlab", "figma", "colab", "colabsoftware"],
-          "lever": ["blackcloak"],
+          {"greenhouse": ["cloudflare", "datadog", "elastic", "gitlab", "figma", "colabsoftware"],
+          "lever": [],
           "ashby": ["1password"]}
           EOF
       - name: Wake the robot inside the notebook
