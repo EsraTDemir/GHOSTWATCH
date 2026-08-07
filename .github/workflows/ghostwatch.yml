@@ -8,34 +8,47 @@ permissions:
   contents: write
   issues: write
   actions: read
+concurrency:
+  group: ghostwatch
+  cancel-in-progress: false
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Set the company watchlist
+        run: |
+          cat > watchlist.json <<'EOF'
+          {"greenhouse": ["cloudflare", "datadog", "elastic", "gitlab", "figma", "colab", "colabsoftware"],
+          "lever": ["blackcloak"],
+          "ashby": ["1password"]}
+          EOF
       - name: Wake the robot inside the notebook
         id: wake
         continue-on-error: true
         run: |
-          # extract first code cell as a script; tolerate missing notebook
-          python -c "import json,sys; nb=json.load(open('GhostWatch.ipynb')) if 'GhostWatch.ipynb' in __import__('os').listdir('.') else None
-          if nb is None: sys.exit(0)
-          src=[c['source'] for c in nb['cells'] if c['cell_type']=='code']
-          open('gw.py','w').write(src[0] if isinstance(src[0],str) else ''.join(src[0]))"
+          python - <<'EOF'
+          import json,sys,os
+          if 'GhostWatch.ipynb' not in os.listdir('.'):
+            sys.exit(0)
+          nb = json.load(open('GhostWatch.ipynb'))
+          src = [c['source'] for c in nb['cells'] if c['cell_type'] == 'code'][0]
+          src = src if isinstance(src, str) else ''.join(src)
+          src = src.replace('return WATCHLIST', 'return __import__("json").load(open("watchlist.json"))')
+          open('gw.py', 'w').write(src)
+          EOF
 
-          # run the generated script and capture logs; don't fail the job on transient HTTP fetch errors
+          # run generated script, capture logs and avoid failing on transient fetch errors
           python -u gw.py 2>&1 | tee gw.log || true
 
-          # detect common transient fetch or HTTP errors and print a clear warning
+          # detect errors and set outputs
           if grep -E "FAILED:|HTTP Error|404 Not Found|Traceback" gw.log >/dev/null 2>&1; then
             echo "::warning::Notebook run produced errors; see gw.log for details"
             echo "errors=true" >> $GITHUB_OUTPUT
-            echo "--- gw.log (head) ---"
-            sed -n '1,200p' gw.log || true
-            echo "--- gw.log (tail) ---"
             sed -n '1,200p' gw.log || true
           else
             echo "errors=false" >> $GITHUB_OUTPUT
@@ -45,65 +58,42 @@ jobs:
         run: |
           git config user.name "ghostwatch-bot"
           git config user.email "bot@users.noreply.github.com"
+          git pull --rebase origin main || true
           git add GhostWatch/
           git commit -m "daily watch $(date -u +%F)" || echo "nothing new"
           git push || echo "push failed; skipping"
-
       - name: Upload gw.log artifact on error
         if: steps.wake.outputs.errors == 'true'
         uses: actions/upload-artifact@v4
         with:
-          # include run id and run number for easy lookup; retain for 14 days
           name: gw-log-${{ github.run_id }}-r${{ github.run_number }}
           path: gw.log
           retention-days: 14
-
-      - name: Open issue if errors recur
+      - name: Open or update issue if errors recur
         if: steps.wake.outputs.errors == 'true'
         uses: actions/github-script@v6
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            // find the workflow id for this workflow by name
             const workflows = await github.rest.actions.listRepoWorkflows({ owner, repo });
             const wf = workflows.data.workflows.find(w => w.name === context.workflow);
-            if (!wf) {
-              core.info('workflow not found; skipping issue creation');
-              return;
-            }
+            if (!wf) { core.info('workflow not found; skipping issue creation'); return; }
             const workflow_id = wf.id;
-            // list recent runs for this workflow
             const runs = await github.rest.actions.listWorkflowRuns({ owner, repo, workflow_id, per_page: 50 });
             const now = new Date();
             const weekAgo = new Date(now.getTime() - 7*24*60*60*1000);
             const recentRuns = runs.data.workflow_runs.filter(r => new Date(r.created_at) >= weekAgo);
-            const failedCount = recentRuns.filter(r => r.conclusion !== 'success').length;
+            const failedRunsList = recentRuns.filter(r => r.conclusion !== 'success');
+            const failedCount = failedRunsList.length;
             const threshold = 3;
-            if (failedCount < threshold) {
-              core.info(`Recent failed runs (${failedCount}) < threshold (${threshold}); not opening issue.`);
-              return;
-            }
-            // avoid duplicate issues: check open issues with a matching title
+            if (failedCount < threshold) { core.info(`Recent failed runs (${failedCount}) < threshold (${threshold}); not opening issue.`); return; }
             const title = `GhostWatch: repeated notebook run errors (${failedCount} failures in 7d)`;
             const existing = await github.rest.issues.listForRepo({ owner, repo, state: 'open', per_page: 100 });
             const dup = existing.data.find(i => i.title && i.title.includes('GhostWatch: repeated notebook run errors'));
-            const failedRuns = recentRuns.filter(r => r.conclusion !== 'success').slice(0,10);
-            const bodyLines = [
-              `The GhostWatch daily workflow has recorded ${failedCount} non-success runs in the last 7 days.`,
-              '',
-              'Recent failed runs (up to 10):',
-            ];
-            for (const r of failedRuns) {
-              bodyLines.push(`- ${r.html_url} (conclusion: ${r.conclusion}, created_at: ${r.created_at})`);
-            }
+            const failedRuns = failedRunsList.slice(0,10);
+            const bodyLines = [ `The GhostWatch daily workflow has recorded ${failedCount} non-success runs in the last 7 days.`, '', 'Recent failed runs (up to 10):' ];
+            for (const r of failedRuns) { bodyLines.push(`- ${r.html_url} (conclusion: ${r.conclusion}, created_at: ${r.created_at})`); }
             bodyLines.push('', 'Attachments: gw.log artifacts are available on the failed runs.');
-
-            if (dup) {
-              // update existing issue with a new comment instead of creating a duplicate
-              core.info(`Updating existing issue #${dup.number} with latest failure summary.`);
-              await github.rest.issues.createComment({ owner, repo, issue_number: dup.number, body: bodyLines.join('\n') });
-              return;
-            }
-            // create the issue
+            if (dup) { core.info(`Updating existing issue #${dup.number} with latest failure summary.`); await github.rest.issues.createComment({ owner, repo, issue_number: dup.number, body: bodyLines.join('\n') }); return; }
             await github.rest.issues.create({ owner, repo, title, body: bodyLines.join('\n'), labels: ['ci-automation','ghostwatch'] });
