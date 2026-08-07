@@ -15,13 +15,41 @@ jobs:
         with:
           python-version: "3.12"
       - name: Wake the robot inside the notebook
+        id: wake
+        continue-on-error: true
         run: |
-          python -c "import json; nb=json.load(open('GhostWatch.ipynb')); src=[c['source'] for c in nb['cells'] if c['cell_type']=='code'][0]; open('gw.py','w').write(src if isinstance(src,str) else ''.join(src))"
-          python gw.py
+          # extract first code cell as a script; tolerate missing notebook
+          python -c "import json,sys; nb=json.load(open('GhostWatch.ipynb')) if 'GhostWatch.ipynb' in __import__('os').listdir('.') else None
+          if nb is None: sys.exit(0)
+          src=[c['source'] for c in nb['cells'] if c['cell_type']=='code']
+          open('gw.py','w').write(src[0] if isinstance(src[0],str) else ''.join(src[0]))"
+
+          # run the generated script and capture logs; don't fail the job on transient HTTP fetch errors
+          python -u gw.py 2>&1 | tee gw.log || true
+
+          # detect common transient fetch or HTTP errors and print a clear warning
+          if grep -E "FAILED:|HTTP Error|404 Not Found|Traceback" gw.log >/dev/null 2>&1; then
+            echo "::warning::Notebook run produced errors; see gw.log for details"
+            echo "errors=true" >> $GITHUB_OUTPUT
+            echo "--- gw.log (head) ---"
+            sed -n '1,200p' gw.log || true
+            echo "--- gw.log (tail) ---"
+            sed -n '1,200p' gw.log || true
+          else
+            echo "errors=false" >> $GITHUB_OUTPUT
+          fi
       - name: Save the diary
+        continue-on-error: true
         run: |
           git config user.name "ghostwatch-bot"
           git config user.email "bot@users.noreply.github.com"
           git add GhostWatch/
           git commit -m "daily watch $(date -u +%F)" || echo "nothing new"
-          git push
+          git push || echo "push failed; skipping"
+
+      - name: Upload gw.log artifact on error
+        if: steps.wake.outputs.errors == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gw-log
+          path: gw.log
