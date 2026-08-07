@@ -88,11 +88,6 @@ jobs:
             const title = `GhostWatch: repeated notebook run errors (${failedCount} failures in 7d)`;
             const existing = await github.rest.issues.listForRepo({ owner, repo, state: 'open', per_page: 100 });
             const dup = existing.data.find(i => i.title && i.title.includes('GhostWatch: repeated notebook run errors'));
-            if (dup) {
-              core.info('An open issue already exists; not creating another.');
-              return;
-            }
-            // prepare body with links to recent failed runs
             const failedRuns = recentRuns.filter(r => r.conclusion !== 'success').slice(0,10);
             const bodyLines = [
               `The GhostWatch daily workflow has recorded ${failedCount} non-success runs in the last 7 days.`,
@@ -103,5 +98,12 @@ jobs:
               bodyLines.push(`- ${r.html_url} (conclusion: ${r.conclusion}, created_at: ${r.created_at})`);
             }
             bodyLines.push('', 'Attachments: gw.log artifacts are available on the failed runs.');
+
+            if (dup) {
+              // update existing issue with a new comment instead of creating a duplicate
+              core.info(`Updating existing issue #${dup.number} with latest failure summary.`);
+              await github.rest.issues.createComment({ owner, repo, issue_number: dup.number, body: bodyLines.join('\n') });
+              return;
+            }
             // create the issue
             await github.rest.issues.create({ owner, repo, title, body: bodyLines.join('\n'), labels: ['ci-automation','ghostwatch'] });
