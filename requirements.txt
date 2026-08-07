@@ -1,3 +1,3 @@
 # Generated from GhostWatch.ipynb imports — verify manually
-# Third-party packages referenced by the notebook
-google-colab
+# The notebook uses google.colab (Colab-only). Do not install google-colab in CI.
+# No installable PyPI packages were detected from imports.
