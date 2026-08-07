@@ -1,0 +1,3 @@
+# Generated from GhostWatch.ipynb imports — verify manually
+# Third-party packages referenced by the notebook
+google-colab
