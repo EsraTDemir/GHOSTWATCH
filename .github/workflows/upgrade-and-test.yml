@@ -35,7 +35,7 @@ jobs:
             # Install pytest if tests exist
             if ls test* 1>/dev/null 2>&1 || [ -f pytest.ini ] || [ -d tests ]; then
               python -m pip install pytest
-              pytest -q || true
+              pytest -q
             else
               echo "No tests detected"
             fi

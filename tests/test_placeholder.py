@@ -1,0 +1,1 @@
+def test_placeholder():\n    # Minimal smoke test so CI validates test runner works.\n    assert True\n
