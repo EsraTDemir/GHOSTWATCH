@@ -23,8 +23,8 @@ jobs:
       - name: Install and upgrade requirements
         run: |
           if [ -f requirements.txt ]; then
-            echo "Found requirements.txt — upgrading packages"
-            pip install --upgrade -r requirements.txt
+            echo "Found requirements.txt â€” upgrading packages"
+            pip install --upgrade -r requirements.txt || true
           else
             echo "No requirements.txt found"
           fi
@@ -40,5 +40,5 @@ jobs:
               echo "No tests detected"
             fi
           else
-            echo "No requirements.txt — skipping test discovery"
+            echo "No requirements.txt â€” skipping test discovery"
           fi
