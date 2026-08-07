@@ -1,4 +1,4 @@
-ghostwatch report -- 2026-08-07 04:31 UTC
+ghostwatch report -- 2026-08-07 04:47 UTC
 
 
 source status:
@@ -7,26 +7,30 @@ source status:
   greenhouse/elastic       ok     239 postings,  14 matched keywords
   greenhouse/gitlab        ok     190 postings,   7 matched keywords
   greenhouse/figma         ok     167 postings,   2 matched keywords
-  lever/1password          FAILED: HTTP Error 404: Not Found
+  greenhouse/colab         FAILED: HTTP Error 404: Not Found
+  greenhouse/colabsoftware ok      29 postings,   1 matched keywords
+  lever/blackcloak         FAILED: HTTP Error 404: Not Found
+  ashby/1password          ok      61 postings,   4 matched keywords
   remoteok                 ok       1 postings,   1 matched keywords
   remotive                 ok       0 postings,   0 matched keywords
 
-recorded/updated 75 matching postings
-scored 75 tracked postings
+recorded/updated 80 matching postings
+scored 80 tracked postings
 
-postings scored:        75
+postings scored:        80
   ghost             0  (0.0%)
   likely_ghost      0  (0.0%)
-  watch            10  (13.3%)
-  active           65  (86.7%)
+  watch            10  (12.5%)
+  active           70  (87.5%)
 ghost rate (verdict-based): 0.0%   (excludes 0 evergreen/compliance-tagged)
 
 by source (share of that source with a ghost verdict):
-  greenhouse      74 tracked   0.0% ghost-scored
+  greenhouse      75 tracked   0.0% ghost-scored
+  ashby            4 tracked   0.0% ghost-scored
   remoteok         1 tracked   0.0% ghost-scored
 
 top signals fired:
-  GH-006   75
+  GH-006   80
   GH-009   9
   GH-004   1
 
