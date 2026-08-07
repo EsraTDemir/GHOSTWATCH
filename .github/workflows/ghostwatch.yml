@@ -6,6 +6,8 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+  issues: write
+  actions: read
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -55,3 +57,51 @@ jobs:
           name: gw-log-${{ github.run_id }}-r${{ github.run_number }}
           path: gw.log
           retention-days: 14
+
+      - name: Open issue if errors recur
+        if: steps.wake.outputs.errors == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            // find the workflow id for this workflow by name
+            const workflows = await github.rest.actions.listRepoWorkflows({ owner, repo });
+            const wf = workflows.data.workflows.find(w => w.name === context.workflow);
+            if (!wf) {
+              core.info('workflow not found; skipping issue creation');
+              return;
+            }
+            const workflow_id = wf.id;
+            // list recent runs for this workflow
+            const runs = await github.rest.actions.listWorkflowRuns({ owner, repo, workflow_id, per_page: 50 });
+            const now = new Date();
+            const weekAgo = new Date(now.getTime() - 7*24*60*60*1000);
+            const recentRuns = runs.data.workflow_runs.filter(r => new Date(r.created_at) >= weekAgo);
+            const failedCount = recentRuns.filter(r => r.conclusion !== 'success').length;
+            const threshold = 3;
+            if (failedCount < threshold) {
+              core.info(`Recent failed runs (${failedCount}) < threshold (${threshold}); not opening issue.`);
+              return;
+            }
+            // avoid duplicate issues: check open issues with a matching title
+            const title = `GhostWatch: repeated notebook run errors (${failedCount} failures in 7d)`;
+            const existing = await github.rest.issues.listForRepo({ owner, repo, state: 'open', per_page: 100 });
+            const dup = existing.data.find(i => i.title && i.title.includes('GhostWatch: repeated notebook run errors'));
+            if (dup) {
+              core.info('An open issue already exists; not creating another.');
+              return;
+            }
+            // prepare body with links to recent failed runs
+            const failedRuns = recentRuns.filter(r => r.conclusion !== 'success').slice(0,10);
+            const bodyLines = [
+              `The GhostWatch daily workflow has recorded ${failedCount} non-success runs in the last 7 days.`,
+              '',
+              'Recent failed runs (up to 10):',
+            ];
+            for (const r of failedRuns) {
+              bodyLines.push(`- ${r.html_url} (conclusion: ${r.conclusion}, created_at: ${r.created_at})`);
+            }
+            bodyLines.push('', 'Attachments: gw.log artifacts are available on the failed runs.');
+            // create the issue
+            await github.rest.issues.create({ owner, repo, title, body: bodyLines.join('\n'), labels: ['ci-automation','ghostwatch'] });
